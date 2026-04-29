@@ -182,6 +182,19 @@ fun SettingsScreen(
                 onDownloadModel = onDownloadModel,
             )
         }
+        item {
+            Text(
+                text = "@feelthevenom",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 28.dp),
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.mutedText,
+                ),
+            )
+        }
         item { Spacer(modifier = Modifier.height(40.dp)) }
     }
 }

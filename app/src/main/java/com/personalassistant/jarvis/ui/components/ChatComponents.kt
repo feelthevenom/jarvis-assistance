@@ -1,7 +1,10 @@
 package com.personalassistant.jarvis.ui.components
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +23,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
@@ -28,11 +33,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -41,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import com.personalassistant.jarvis.data.ChatMessage
 import com.personalassistant.jarvis.data.MessageRole
 import com.personalassistant.jarvis.ui.theme.LocalConciergePalette
+import java.io.File
 
 @Composable
 fun SparkleAvatar() {
@@ -132,6 +142,10 @@ fun ChatBubble(message: ChatMessage) {
                     .background(if (isUser) palette.userBubble else palette.assistantBubble)
                     .padding(12.dp),
             ) {
+                message.imageUri?.let { uri ->
+                    ChatImage(uri = uri)
+                    if (message.body.isNotBlank()) Spacer(modifier = Modifier.height(8.dp))
+                }
                 if (message.pending) {
                     TypingDots()
                 } else {
@@ -169,6 +183,8 @@ fun ChatComposer(
     value: String,
     onValueChange: (String) -> Unit,
     onVoiceClick: () -> Unit,
+    onCameraClick: () -> Unit,
+    onGalleryClick: () -> Unit,
     onSend: () -> Unit,
     sendEnabled: Boolean,
     modifier: Modifier = Modifier,
@@ -184,6 +200,18 @@ fun ChatComposer(
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        ComposerIconButton(
+            icon = Icons.Rounded.PhotoCamera,
+            contentDescription = "Camera",
+            onClick = onCameraClick,
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        ComposerIconButton(
+            icon = Icons.Rounded.PhotoLibrary,
+            contentDescription = "Gallery",
+            onClick = onGalleryClick,
+        )
+        Spacer(modifier = Modifier.width(6.dp))
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -203,7 +231,7 @@ fun ChatComposer(
         Box(modifier = Modifier.weight(1f)) {
             if (value.isEmpty()) {
                 Text(
-                    text = "Message Concierge…",
+                    text = "Message Thragg...",
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 14.sp,
                         color = palette.lightText,
@@ -241,6 +269,59 @@ fun ChatComposer(
             )
         }
     }
+}
+
+@Composable
+private fun ComposerIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val palette = LocalConciergePalette.current
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(palette.surface)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = palette.text,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
+private fun ChatImage(uri: String) {
+    val context = LocalContext.current
+    val bitmap = remember(uri) { loadBitmap(context, uri) }
+    bitmap?.let {
+        Image(
+            bitmap = it.asImageBitmap(),
+            contentDescription = "Attached image",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(10.dp)),
+        )
+    }
+}
+
+private fun loadBitmap(context: Context, uri: String): android.graphics.Bitmap? {
+    return runCatching {
+        if (uri.startsWith("content://")) {
+            context.contentResolver.openInputStream(Uri.parse(uri))?.use { input ->
+                android.graphics.BitmapFactory.decodeStream(input)
+            }
+        } else {
+            android.graphics.BitmapFactory.decodeFile(File(uri).absolutePath)
+        }
+    }.getOrNull()
 }
 
 @Composable
@@ -325,10 +406,10 @@ fun ModelStatusCard(
 }
 
 @Composable
-fun ProfileBadge() {
+fun ProfileBadge(modifier: Modifier = Modifier) {
     val palette = LocalConciergePalette.current
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(27.dp)
             .clip(CircleShape)
             .background(palette.userBubble),

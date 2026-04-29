@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.personalassistant.jarvis.data.ChatMessage
 import com.personalassistant.jarvis.data.MessageRole
+import com.personalassistant.jarvis.data.UserProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -98,7 +99,7 @@ class GemmaAssistantEngine(context: Context) {
                 connectTimeout = 30_000
                 readTimeout = 30_000
                 instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "ConciergeAndroid/1.0")
+                setRequestProperty("User-Agent", "ThraggAndroid/1.0")
             }
 
             connection.inputStream.use { input ->
@@ -144,6 +145,7 @@ class GemmaAssistantEngine(context: Context) {
     suspend fun generate(
         prompt: String,
         history: List<ChatMessage>,
+        profile: UserProfile,
     ): String = withContext(Dispatchers.Default) {
         when (val state = ensureReady()) {
             is ModelStatus.Missing -> "I need a model file at\n${state.expectedPath}\nbefore I can answer."
@@ -151,7 +153,7 @@ class GemmaAssistantEngine(context: Context) {
             ModelStatus.NotInitialized,
             is ModelStatus.Downloading,
             ModelStatus.Initializing -> "I am still loading the on-device model."
-            ModelStatus.Ready -> runGeneration(prompt, history)
+            ModelStatus.Ready -> runGeneration(prompt, history, profile)
         }
     }
 
@@ -161,9 +163,9 @@ class GemmaAssistantEngine(context: Context) {
         _status.value = ModelStatus.NotInitialized
     }
 
-    private fun runGeneration(prompt: String, history: List<ChatMessage>): String {
+    private fun runGeneration(prompt: String, history: List<ChatMessage>, profile: UserProfile): String {
         val activeEngine = engine ?: return "Engine not initialized."
-        val composedPrompt = buildPromptString(prompt, history)
+        val composedPrompt = buildPromptString(prompt, history, profile)
         return runCatching {
             val conversation = createConversationReflectively(activeEngine)
             try {
@@ -178,13 +180,35 @@ class GemmaAssistantEngine(context: Context) {
         }
     }
 
-    private fun buildPromptString(prompt: String, history: List<ChatMessage>): String {
+    private fun buildPromptString(
+        prompt: String,
+        history: List<ChatMessage>,
+        profile: UserProfile,
+    ): String {
         val builder = StringBuilder()
-        builder.append("You are Concierge, a helpful private on-device assistant. ")
-        builder.append("Reply concisely and remember earlier turns.\n\n")
+        builder.append("You are Thragg, a helpful private on-device assistant. ")
+        builder.append("Reply concisely. Use the user's language: English, Tamil, or a natural mix when the user mixes them. ")
+        builder.append("Treat the conversation history as reliable memory for this chat. ")
+        builder.append("If the user asks about something they told you earlier, answer from the earlier turns instead of saying you do not know.\n\n")
+        if (profile.hasContext()) {
+            builder.append("Persistent user profile:\n")
+            if (profile.name.isNotBlank()) builder.append("- Name: ").append(profile.name.trim()).append('\n')
+            if (profile.age.isNotBlank()) builder.append("- Age: ").append(profile.age.trim()).append('\n')
+            if (profile.dateOfBirth.isNotBlank()) {
+                builder.append("- Date of birth: ").append(profile.dateOfBirth.trim()).append('\n')
+            }
+            if (profile.personalDetail.isNotBlank()) {
+                builder.append("- Personal detail: ").append(profile.personalDetail.trim()).append('\n')
+            }
+            builder.append('\n')
+        }
+        builder.append("Recent conversation:\n")
         history.takeLast(MAX_HISTORY_TURNS).forEach { message ->
             val speaker = if (message.role == MessageRole.User) "User" else "Assistant"
             builder.append(speaker).append(": ").append(message.body.trim()).append('\n')
+            if (message.imageUri != null) {
+                builder.append(speaker).append(" attached an image.\n")
+            }
         }
         builder.append("User: ").append(prompt.trim()).append('\n')
         builder.append("Assistant:")

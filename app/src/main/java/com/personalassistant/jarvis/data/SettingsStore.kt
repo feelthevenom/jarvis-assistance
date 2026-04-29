@@ -14,6 +14,20 @@ data class AppSettings(
     val cacheModelInMemory: Boolean = true,
 )
 
+data class UserProfile(
+    val name: String = "",
+    val age: String = "",
+    val dateOfBirth: String = "",
+    val personalDetail: String = "",
+) {
+    fun hasContext(): Boolean {
+        return name.isNotBlank() ||
+            age.isNotBlank() ||
+            dateOfBirth.isNotBlank() ||
+            personalDetail.isNotBlank()
+    }
+}
+
 /**
  * SharedPreferences-backed settings used by the active Settings tab.
  * Toggles map directly to behaviour: saveHistory disables ConversationStore
@@ -49,6 +63,22 @@ class SettingsStore(context: Context) {
             .apply()
     }
 
+    fun loadProfile(): UserProfile = UserProfile(
+        name = prefs.getString(KEY_PROFILE_NAME, "").orEmpty(),
+        age = prefs.getString(KEY_PROFILE_AGE, "").orEmpty(),
+        dateOfBirth = prefs.getString(KEY_PROFILE_DOB, "").orEmpty(),
+        personalDetail = prefs.getString(KEY_PROFILE_PERSONAL_DETAIL, "").orEmpty(),
+    )
+
+    fun saveProfile(profile: UserProfile) {
+        prefs.edit()
+            .putString(KEY_PROFILE_NAME, profile.name)
+            .putString(KEY_PROFILE_AGE, profile.age)
+            .putString(KEY_PROFILE_DOB, profile.dateOfBirth)
+            .putString(KEY_PROFILE_PERSONAL_DETAIL, profile.personalDetail)
+            .apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "concierge_settings"
         private const val KEY_THEME = "theme"
@@ -59,5 +89,9 @@ class SettingsStore(context: Context) {
         private const val KEY_ANALYTICS = "analytics_enabled"
         private const val KEY_STORE_AUDIO = "store_audio"
         private const val KEY_CACHE_MODEL = "cache_model_in_memory"
+        private const val KEY_PROFILE_NAME = "profile_name"
+        private const val KEY_PROFILE_AGE = "profile_age"
+        private const val KEY_PROFILE_DOB = "profile_date_of_birth"
+        private const val KEY_PROFILE_PERSONAL_DETAIL = "profile_personal_detail"
     }
 }

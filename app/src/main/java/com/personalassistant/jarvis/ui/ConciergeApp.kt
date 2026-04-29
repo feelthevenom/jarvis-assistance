@@ -1,7 +1,17 @@
 package com.personalassistant.jarvis.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -48,12 +58,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.personalassistant.jarvis.ui.components.ProfileEditorDialog
 import com.personalassistant.jarvis.ui.screens.AssistantScreen
 import com.personalassistant.jarvis.ui.screens.HistoryDrawer
 import com.personalassistant.jarvis.ui.screens.SettingsScreen
 import com.personalassistant.jarvis.ui.screens.VoiceScreen
 import com.personalassistant.jarvis.ui.theme.JarvisTheme
 import com.personalassistant.jarvis.ui.theme.LocalConciergePalette
+import java.io.File
+import java.util.UUID
 
 @Composable
 fun ConciergeApp(viewModel: ConciergeViewModel = viewModel()) {
@@ -78,6 +91,16 @@ fun ConciergeApp(viewModel: ConciergeViewModel = viewModel()) {
             if (granted && state.tab == Tab.Voice) {
                 viewModel.startVoiceCapture()
             }
+        }
+        val galleryLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.GetContent(),
+        ) { uri ->
+            uri?.let { copyImageToPrivateStorage(context, it)?.let(viewModel::sendImagePrompt) }
+        }
+        val cameraLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.TakePicturePreview(),
+        ) { bitmap ->
+            bitmap?.let { saveCameraBitmap(context, it)?.let(viewModel::sendImagePrompt) }
         }
 
         LaunchedEffect(state.tab) {
@@ -105,51 +128,60 @@ fun ConciergeApp(viewModel: ConciergeViewModel = viewModel()) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.weight(1f)) {
-                        when (state.tab) {
-                            Tab.Assistant -> AssistantScreen(
-                                messages = state.currentMessages,
-                                composerValue = state.composer,
-                                isThinking = state.isThinking,
-                                modelStatus = state.modelStatus,
-                                modelRepoUrl = viewModel.modelRepoUrl,
-                                modelDownloadUrl = viewModel.modelDownloadUrl,
-                                modelSizeBytes = viewModel.modelSizeBytes,
-                                onComposerChange = viewModel::updateComposer,
-                                onSend = viewModel::sendComposerPrompt,
-                                onVoiceClick = { viewModel.selectTab(Tab.Voice) },
-                                onMenuClick = { viewModel.setDrawerOpen(true) },
-                                onNewChat = viewModel::newChat,
-                                onRetryEngine = viewModel::retryEngine,
-                                onDownloadModel = viewModel::downloadModel,
-                                contentPadding = systemPadding,
-                            )
-                            Tab.Voice -> VoiceScreen(
-                                voiceState = state.voice,
-                                isThinking = state.isThinking,
-                                micPermissionGranted = micPermissionGranted,
-                                onRequestPermission = {
-                                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                },
-                                onStartListening = viewModel::startVoiceCapture,
-                                onStopListening = viewModel::stopVoiceCapture,
-                                onClose = { viewModel.selectTab(Tab.Assistant) },
-                            )
-                            Tab.Settings -> SettingsScreen(
-                                settings = state.settings,
-                                modelStatus = state.modelStatus,
-                                chatStorageBytes = viewModel.chatStorageBytes(),
-                                expectedModelPath = viewModel.expectedModelPath,
-                                modelRepoUrl = viewModel.modelRepoUrl,
-                                modelDownloadUrl = viewModel.modelDownloadUrl,
-                                modelSizeBytes = viewModel.modelSizeBytes,
-                                onSettingsChange = { updated ->
-                                    viewModel.updateSettings { updated }
-                                },
-                                onClearChats = viewModel::clearAllSessions,
-                                onClearCache = viewModel::reloadEngine,
-                                onDownloadModel = viewModel::downloadModel,
-                                contentPadding = systemPadding,
-                            )
+                        AnimatedContent(
+                            targetState = state.tab,
+                            transitionSpec = { fadeIn() togetherWith fadeOut() },
+                            label = "tab-content",
+                        ) { tab ->
+                            when (tab) {
+                                Tab.Assistant -> AssistantScreen(
+                                    messages = state.currentMessages,
+                                    composerValue = state.composer,
+                                    isThinking = state.isThinking,
+                                    modelStatus = state.modelStatus,
+                                    modelRepoUrl = viewModel.modelRepoUrl,
+                                    modelDownloadUrl = viewModel.modelDownloadUrl,
+                                    modelSizeBytes = viewModel.modelSizeBytes,
+                                    onComposerChange = viewModel::updateComposer,
+                                    onSend = viewModel::sendComposerPrompt,
+                                    onVoiceClick = { viewModel.selectTab(Tab.Voice) },
+                                    onCameraClick = { cameraLauncher.launch(null) },
+                                    onGalleryClick = { galleryLauncher.launch("image/*") },
+                                    onMenuClick = { viewModel.setDrawerOpen(true) },
+                                    onNewChat = viewModel::newChat,
+                                    onProfileClick = { viewModel.setProfileEditorOpen(true) },
+                                    onRetryEngine = viewModel::retryEngine,
+                                    onDownloadModel = viewModel::downloadModel,
+                                    contentPadding = systemPadding,
+                                )
+                                Tab.Voice -> VoiceScreen(
+                                    voiceState = state.voice,
+                                    isThinking = state.isThinking,
+                                    micPermissionGranted = micPermissionGranted,
+                                    onRequestPermission = {
+                                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    },
+                                    onStartListening = viewModel::startVoiceCapture,
+                                    onStopListening = viewModel::stopVoiceCapture,
+                                    onClose = { viewModel.selectTab(Tab.Assistant) },
+                                )
+                                Tab.Settings -> SettingsScreen(
+                                    settings = state.settings,
+                                    modelStatus = state.modelStatus,
+                                    chatStorageBytes = viewModel.chatStorageBytes(),
+                                    expectedModelPath = viewModel.expectedModelPath,
+                                    modelRepoUrl = viewModel.modelRepoUrl,
+                                    modelDownloadUrl = viewModel.modelDownloadUrl,
+                                    modelSizeBytes = viewModel.modelSizeBytes,
+                                    onSettingsChange = { updated ->
+                                        viewModel.updateSettings { updated }
+                                    },
+                                    onClearChats = viewModel::clearAllSessions,
+                                    onClearCache = viewModel::reloadEngine,
+                                    onDownloadModel = viewModel::downloadModel,
+                                    contentPadding = systemPadding,
+                                )
+                            }
                         }
                     }
 
@@ -171,6 +203,13 @@ fun ConciergeApp(viewModel: ConciergeViewModel = viewModel()) {
                     onOpenSession = viewModel::openSession,
                     onDeleteSession = viewModel::deleteSession,
                 )
+                if (state.profileEditorOpen) {
+                    ProfileEditorDialog(
+                        profile = state.profile,
+                        onDismiss = { viewModel.setProfileEditorOpen(false) },
+                        onSave = viewModel::updateProfile,
+                    )
+                }
             }
         }
     }
@@ -205,18 +244,31 @@ private fun NavItem(
     onClick: () -> Unit,
 ) {
     val palette = LocalConciergePalette.current
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) palette.text else palette.lightText,
+        label = "nav-icon",
+    )
+    val labelTint by animateColorAsState(
+        targetValue = if (selected) palette.text else palette.lightText,
+        label = "nav-label",
+    )
+    val verticalPadding by animateDpAsState(
+        targetValue = if (selected) 8.dp else 4.dp,
+        label = "nav-padding",
+    )
     Column(
         modifier = Modifier
             .width(96.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            .animateContentSize()
+            .padding(vertical = verticalPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = if (selected) palette.text else palette.lightText,
+            tint = iconTint,
             modifier = Modifier.size(22.dp),
         )
         Spacer(modifier = Modifier.height(2.dp))
@@ -225,8 +277,30 @@ private fun NavItem(
             style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 11.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected) palette.text else palette.lightText,
+                color = labelTint,
             ),
         )
     }
+}
+
+private fun copyImageToPrivateStorage(context: Context, uri: Uri): String? {
+    return runCatching {
+        val imageDir = File(context.filesDir, "images").apply { mkdirs() }
+        val target = File(imageDir, "${UUID.randomUUID()}.jpg")
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        } ?: return null
+        target.absolutePath
+    }.getOrNull()
+}
+
+private fun saveCameraBitmap(context: Context, bitmap: Bitmap): String? {
+    return runCatching {
+        val imageDir = File(context.filesDir, "images").apply { mkdirs() }
+        val target = File(imageDir, "${UUID.randomUUID()}.jpg")
+        target.outputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output)
+        }
+        target.absolutePath
+    }.getOrNull()
 }

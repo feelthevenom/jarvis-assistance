@@ -1,6 +1,7 @@
 package com.personalassistant.jarvis.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,8 +53,11 @@ fun AssistantScreen(
     onComposerChange: (String) -> Unit,
     onSend: () -> Unit,
     onVoiceClick: () -> Unit,
+    onCameraClick: () -> Unit,
+    onGalleryClick: () -> Unit,
     onMenuClick: () -> Unit,
     onNewChat: () -> Unit,
+    onProfileClick: () -> Unit,
     onRetryEngine: () -> Unit,
     onDownloadModel: () -> Unit,
     contentPadding: PaddingValues,
@@ -77,6 +81,7 @@ fun AssistantScreen(
         AssistantTopBar(
             onMenuClick = onMenuClick,
             onNewChat = onNewChat,
+            onProfileClick = onProfileClick,
         )
 
         LazyColumn(
@@ -120,6 +125,8 @@ fun AssistantScreen(
             value = composerValue,
             onValueChange = onComposerChange,
             onVoiceClick = onVoiceClick,
+            onCameraClick = onCameraClick,
+            onGalleryClick = onGalleryClick,
             onSend = onSend,
             sendEnabled = composerValue.isNotBlank() && !isThinking,
             modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
@@ -131,6 +138,7 @@ fun AssistantScreen(
 private fun AssistantTopBar(
     onMenuClick: () -> Unit,
     onNewChat: () -> Unit,
+    onProfileClick: () -> Unit,
 ) {
     val palette = LocalConciergePalette.current
     Row(
@@ -149,7 +157,7 @@ private fun AssistantTopBar(
             )
         }
         Text(
-            text = "Concierge",
+            text = "Thragg",
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.titleMedium.copy(
@@ -167,7 +175,7 @@ private fun AssistantTopBar(
             )
         }
         Box(modifier = Modifier.padding(horizontal = 6.dp)) {
-            ProfileBadge()
+            ProfileBadge(modifier = Modifier.clickable(onClick = onProfileClick))
         }
     }
 }
@@ -200,7 +208,7 @@ private fun statusBanner(
     is ModelStatus.Missing -> ({
         ModelStatusCard(
             title = "Download Gemma 4 E2B",
-            description = "Gallery uses Gemma-4-E2B-it from the Android 1.0.12 allowlist.\n\nModel: gemma-4-E2B-it.litertlm (${formatBytes(modelSizeBytes)})\nSource: $modelRepoUrl\nDownload: $modelDownloadUrl\n\nConcierge will save it to:\n${status.expectedPath}",
+            description = "Gallery uses Gemma-4-E2B-it from the Android 1.0.12 allowlist.\n\nModel: gemma-4-E2B-it.litertlm (${formatBytes(modelSizeBytes)})\nSource: $modelRepoUrl\nDownload: $modelDownloadUrl\n\nThragg will save it to:\n${status.expectedPath}",
             actionLabel = "Download model",
             onAction = onDownloadModel,
             showRetry = false,

@@ -1,5 +1,10 @@
 package com.personalassistant.jarvis.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,46 +57,57 @@ fun HistoryDrawer(
     onOpenSession: (String) -> Unit,
     onDeleteSession: (String) -> Unit,
 ) {
-    if (!open) return
     val palette = LocalConciergePalette.current
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(onClick = onClose),
+    AnimatedVisibility(
+        visible = open,
+        enter = fadeIn(),
+        exit = fadeOut(),
     ) {
         Box(
             modifier = Modifier
-                .fillMaxHeight()
-                .width(310.dp)
-                .background(palette.surface)
-                .clickable(enabled = false, onClick = {}),
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable(onClick = onClose),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = contentPadding.calculateTopPadding()),
+            AnimatedVisibility(
+                visible = open,
+                enter = slideInHorizontally(initialOffsetX = { -it }),
+                exit = slideOutHorizontally(targetOffsetX = { -it }),
             ) {
-                DrawerHeader(onClose = onClose, onNewChat = onNewChat)
-
-                if (sessions.isEmpty()) {
-                    EmptyState()
-                } else {
-                    LazyColumn(
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(310.dp)
+                        .background(palette.surface)
+                        .clickable(enabled = false, onClick = {}),
+                ) {
+                    Column(
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                            .fillMaxSize()
+                            .padding(top = contentPadding.calculateTopPadding()),
                     ) {
-                        items(sessions, key = { it.id }) { session ->
-                            SessionRow(
-                                session = session,
-                                active = session.id == activeSessionId,
-                                onClick = { onOpenSession(session.id) },
-                                onDelete = { onDeleteSession(session.id) },
-                            )
+                        DrawerHeader(onClose = onClose, onNewChat = onNewChat)
+
+                        if (sessions.isEmpty()) {
+                            EmptyState()
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                items(sessions, key = { it.id }) { session ->
+                                    SessionRow(
+                                        session = session,
+                                        active = session.id == activeSessionId,
+                                        onClick = { onOpenSession(session.id) },
+                                        onDelete = { onDeleteSession(session.id) },
+                                    )
+                                }
+                            }
                         }
                     }
                 }

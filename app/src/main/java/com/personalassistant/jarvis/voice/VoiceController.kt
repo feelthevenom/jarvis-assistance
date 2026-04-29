@@ -3,6 +3,8 @@ package com.personalassistant.jarvis.voice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -47,6 +49,8 @@ class VoiceController(context: Context) {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var pendingSpeech: String? = null
+    private var keepListening = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun setListener(listener: VoiceControllerListener?) {
         this.listener = listener
@@ -66,15 +70,26 @@ class VoiceController(context: Context) {
             )
             return
         }
+        keepListening = true
         stopTts()
         ensureRecognizer()
+        runCatching { recognizer?.cancel() }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
             )
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-IN")
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_SWITCH_ALLOWED_LANGUAGES,
+                arrayListOf("en-IN", "en-US", "ta-IN"),
+            )
+            putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_DETECTION, true)
+            putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_SWITCH, RecognizerIntent.LANGUAGE_SWITCH_BALANCED)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_800L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1_200L)
         }
         _state.value = VoiceUiState(
             phase = VoicePhase.Listening,
@@ -92,7 +107,10 @@ class VoiceController(context: Context) {
     }
 
     fun stopListening() {
+        keepListening = false
+        mainHandler.removeCallbacksAndMessages(null)
         runCatching { recognizer?.stopListening() }
+        runCatching { recognizer?.cancel() }
         if (_state.value.phase == VoicePhase.Listening) {
             _state.value = _state.value.copy(phase = VoicePhase.Idle)
         }
@@ -102,9 +120,14 @@ class VoiceController(context: Context) {
         _state.value = _state.value.copy(phase = VoicePhase.Thinking)
     }
 
+    fun resumeListeningIfNeeded() {
+        if (keepListening) restartListeningSoon()
+    }
+
     fun speak(text: String) {
         if (text.isBlank()) {
             _state.value = _state.value.copy(phase = VoicePhase.Idle)
+            resumeListeningIfNeeded()
             return
         }
         ensureTts()
@@ -113,6 +136,7 @@ class VoiceController(context: Context) {
             return
         }
         _state.value = _state.value.copy(phase = VoicePhase.Speaking, error = null)
+        tts?.language = languageFor(text)
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
     }
 
@@ -126,6 +150,7 @@ class VoiceController(context: Context) {
     fun release() {
         runCatching { recognizer?.destroy() }
         recognizer = null
+        mainHandler.removeCallbacksAndMessages(null)
         runCatching {
             tts?.stop()
             tts?.shutdown()
@@ -148,7 +173,7 @@ class VoiceController(context: Context) {
         tts = TextToSpeech(appContext) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
             if (ttsReady) {
-                tts?.language = Locale.getDefault()
+                tts?.language = Locale("en", "IN")
                 tts?.setOnUtteranceProgressListener(progressListener)
                 pendingSpeech?.let {
                     pendingSpeech = null
@@ -192,16 +217,26 @@ class VoiceController(context: Context) {
                 listener?.onFinalTranscript(text)
             } else {
                 _state.value = _state.value.copy(phase = VoicePhase.Idle)
+                restartListeningSoon()
             }
         }
 
         override fun onError(error: Int) {
             val message = errorMessage(error)
             Log.w(TAG, "SpeechRecognizer error $error: $message")
-            _state.value = _state.value.copy(
-                phase = VoicePhase.Error,
-                error = message,
-            )
+            if (keepListening && error.isRecoverableRecognitionError()) {
+                _state.value = _state.value.copy(
+                    phase = VoicePhase.Listening,
+                    error = null,
+                    partial = "",
+                )
+                restartListeningSoon()
+            } else {
+                _state.value = _state.value.copy(
+                    phase = VoicePhase.Error,
+                    error = message,
+                )
+            }
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -214,6 +249,7 @@ class VoiceController(context: Context) {
 
         override fun onDone(utteranceId: String?) {
             _state.value = _state.value.copy(phase = VoicePhase.Idle)
+            resumeListeningIfNeeded()
         }
 
         @Deprecated(
@@ -245,7 +281,31 @@ class VoiceController(context: Context) {
         else -> "Speech recognition error."
     }
 
+    private fun restartListeningSoon() {
+        if (!keepListening) return
+        mainHandler.removeCallbacksAndMessages(null)
+        mainHandler.postDelayed({
+            if (keepListening && _state.value.phase != VoicePhase.Thinking && _state.value.phase != VoicePhase.Speaking) {
+                startListening()
+            }
+        }, RESTART_DELAY_MS)
+    }
+
+    private fun Int.isRecoverableRecognitionError(): Boolean {
+        return this == SpeechRecognizer.ERROR_NO_MATCH ||
+            this == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+            this == SpeechRecognizer.ERROR_CLIENT ||
+            this == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+    }
+
+    private fun languageFor(text: String): Locale {
+        val hasTamil = text.any { it.code in TAMIL_UNICODE_RANGE }
+        return if (hasTamil) Locale("ta", "IN") else Locale("en", "IN")
+    }
+
     companion object {
         private const val TAG = "VoiceController"
+        private const val RESTART_DELAY_MS = 450L
+        private val TAMIL_UNICODE_RANGE = 0x0B80..0x0BFF
     }
 }

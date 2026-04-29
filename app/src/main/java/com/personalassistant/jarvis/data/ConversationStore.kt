@@ -43,6 +43,7 @@ class ConversationStore(context: Context) {
                     .getOrDefault(MessageRole.Assistant),
                 body = item.optString("body"),
                 timestamp = item.optLong("timestamp", System.currentTimeMillis()),
+                imageUri = item.optString("imageUri").takeIf { it.isNotBlank() },
             )
         }
         return ChatSession(
@@ -62,7 +63,8 @@ class ConversationStore(context: Context) {
                     .put("id", message.id)
                     .put("role", message.role.name)
                     .put("body", message.body)
-                    .put("timestamp", message.timestamp),
+                    .put("timestamp", message.timestamp)
+                    .put("imageUri", message.imageUri.orEmpty()),
             )
         }
         return JSONObject()
@@ -81,7 +83,7 @@ class ConversationStore(context: Context) {
         fun deriveTitleFromPrompt(prompt: String): String {
             val trimmed = prompt.trim().replace("\n", " ")
             if (trimmed.isEmpty()) return DEFAULT_TITLE
-            return trimmed.take(40) + if (trimmed.length > 40) "…" else ""
+            return trimmed.take(40) + if (trimmed.length > 40) "..." else ""
         }
     }
 }

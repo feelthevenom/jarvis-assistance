@@ -10,6 +10,7 @@ data class ChatMessage(
     val body: String,
     val timestamp: Long = System.currentTimeMillis(),
     val pending: Boolean = false,
+    val imageUri: String? = null,
 )
 
 data class ChatSession(

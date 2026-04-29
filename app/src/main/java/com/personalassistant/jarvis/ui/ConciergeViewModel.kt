@@ -11,6 +11,7 @@ import com.personalassistant.jarvis.data.ChatSession
 import com.personalassistant.jarvis.data.ConversationStore
 import com.personalassistant.jarvis.data.MessageRole
 import com.personalassistant.jarvis.data.SettingsStore
+import com.personalassistant.jarvis.data.UserProfile
 import com.personalassistant.jarvis.ui.theme.AppTheme
 import com.personalassistant.jarvis.voice.VoiceController
 import com.personalassistant.jarvis.voice.VoiceControllerListener
@@ -31,6 +32,8 @@ data class ConciergeUiState(
     val composer: String = "",
     val isThinking: Boolean = false,
     val settings: AppSettings = AppSettings(),
+    val profile: UserProfile = UserProfile(),
+    val profileEditorOpen: Boolean = false,
     val modelStatus: ModelStatus = ModelStatus.NotInitialized,
     val voice: VoiceUiState = VoiceUiState(),
 ) {
@@ -61,9 +64,11 @@ class ConciergeViewModel(
     init {
         voice.setListener(this)
         val settings = settingsStore.load()
+        val profile = settingsStore.loadProfile()
         val sessions = if (settings.saveHistory) conversationStore.loadSessions() else emptyList()
         _ui.value = _ui.value.copy(
             settings = settings,
+            profile = profile,
             sessions = sessions,
         )
         observeEngine()
@@ -101,6 +106,15 @@ class ConciergeViewModel(
 
     fun updateComposer(value: String) {
         _ui.value = _ui.value.copy(composer = value)
+    }
+
+    fun setProfileEditorOpen(open: Boolean) {
+        _ui.value = _ui.value.copy(profileEditorOpen = open)
+    }
+
+    fun updateProfile(profile: UserProfile) {
+        _ui.value = _ui.value.copy(profile = profile, profileEditorOpen = false)
+        settingsStore.saveProfile(profile)
     }
 
     fun newChat() {
@@ -141,10 +155,23 @@ class ConciergeViewModel(
         sendUserMessage(text, speakReply = false)
     }
 
-    private fun sendUserMessage(text: String, speakReply: Boolean) {
+    fun sendImagePrompt(imageUri: String) {
+        if (_ui.value.isThinking) return
+        val caption = _ui.value.composer.trim()
+        _ui.value = _ui.value.copy(composer = "")
+        val text = caption.ifBlank { "Image attached." }
+        sendUserMessage(text, speakReply = false, imageUri = imageUri)
+    }
+
+    private fun sendUserMessage(text: String, speakReply: Boolean, imageUri: String? = null) {
         val state = _ui.value
         val now = System.currentTimeMillis()
-        val userMessage = ChatMessage(role = MessageRole.User, body = text, timestamp = now)
+        val userMessage = ChatMessage(
+            role = MessageRole.User,
+            body = text,
+            timestamp = now,
+            imageUri = imageUri,
+        )
         val session = state.currentSession ?: ChatSession(
             title = ConversationStore.deriveTitleFromPrompt(text),
             createdAt = now,
@@ -175,7 +202,12 @@ class ConciergeViewModel(
         if (speakReply) voice.markThinking()
 
         viewModelScope.launch {
-            val reply = engine.generate(text, sessionWithUser.messages)
+            val prompt = if (imageUri == null) {
+                text
+            } else {
+                "$text\n[The user attached an image. If visual understanding is needed, explain the current local model may not be able to inspect the image directly.]"
+            }
+            val reply = engine.generate(prompt, session.messages, _ui.value.profile)
             val updatedMessages = sessionWithPending.messages.dropLast(1) + ChatMessage(
                 id = pending.id,
                 role = MessageRole.Assistant,
@@ -188,10 +220,10 @@ class ConciergeViewModel(
             )
             upsertSession(finalSession)
             _ui.value = _ui.value.copy(isThinking = false)
-            if (speakReply && _ui.value.settings.voiceAutoSpeak) {
+            if (speakReply && _ui.value.tab == Tab.Voice && _ui.value.settings.voiceAutoSpeak) {
                 voice.speak(reply)
-            } else if (speakReply) {
-                voice.stopTts()
+            } else if (speakReply && _ui.value.tab == Tab.Voice) {
+                voice.resumeListeningIfNeeded()
             }
         }
     }

@@ -229,10 +229,10 @@ private fun ActionRow(
 private fun VoicePhase.label(micPermissionGranted: Boolean): String {
     if (!micPermissionGranted) return "Microphone access needed"
     return when (this) {
-        VoicePhase.Idle -> "Tap to talk"
-        VoicePhase.Listening -> "Listening…"
-        VoicePhase.Thinking -> "Thinking…"
-        VoicePhase.Speaking -> "Speaking…"
+        VoicePhase.Idle -> "Tap to start continuous listening"
+        VoicePhase.Listening -> "Listening..."
+        VoicePhase.Thinking -> "Thinking..."
+        VoicePhase.Speaking -> "Speaking..."
         VoicePhase.Error -> "Try again"
     }
 }
@@ -243,13 +243,13 @@ private fun transcriptText(
     micPermissionGranted: Boolean,
 ): String {
     if (!micPermissionGranted) {
-        return "Concierge needs your microphone to capture voice prompts. The audio stays on this device."
+        return "Thragg needs your microphone to capture voice prompts. The audio stays on this device."
     }
     if (voice.error != null && phase == VoicePhase.Error) return voice.error
     if (phase == VoicePhase.Listening) {
         return voice.partial.takeIf { it.isNotBlank() }
-            ?: "Speak naturally. I will reply when you pause."
+            ?: "Speak naturally in English, Tamil, or both. I will reply when you pause and keep listening."
     }
     if (voice.transcript.isNotBlank()) return voice.transcript
-    return "Tap the mic to start a real-time voice conversation."
+    return "Tap the mic to start a continuous voice conversation."
 }
